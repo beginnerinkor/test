@@ -1,0 +1,228 @@
+<title>데스크 계산기</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;500&family=Figtree:wght@400;600&display=swap">
+<style>
+  /* Layout: one centered calculator body; history strip below the LCD */
+  :root {
+    --bg: #e7e9e4;
+    --body: #f6f7f3;
+    --lcd: #cfd8c4;
+    --lcd-ink: #26301f;
+    --key: #ffffff;
+    --key-ink: #2a2e27;
+    --key-fn: #dfe3da;
+    --accent: #c8553d;
+    --accent-ink: #ffffff;
+    --muted: #6b7266;
+    --edge: #c9cdc3;
+    --font-lcd: "Chivo Mono", ui-monospace, Consolas, monospace;
+    --font-ui: "Figtree", system-ui, "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161915; --body: #20241f; --lcd: #2f3a2a; --lcd-ink: #d6e6c8;
+      --key: #2c312a; --key-ink: #e6e9e2; --key-fn: #394035;
+      --accent: #e0694f; --accent-ink: #1a1a1a; --muted: #99a192; --edge: #3a4036;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161915; --body: #20241f; --lcd: #2f3a2a; --lcd-ink: #d6e6c8;
+    --key: #2c312a; --key-ink: #e6e9e2; --key-fn: #394035;
+    --accent: #e0694f; --accent-ink: #1a1a1a; --muted: #99a192; --edge: #3a4036;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--key-ink); font-family: var(--font-ui);
+    display: grid; place-items: center; padding: 24px 16px; box-sizing: border-box;
+  }
+  .calc {
+    width: 100%; max-width: 360px; background: var(--body);
+    border: 1px solid var(--edge); border-radius: 20px; padding: 18px;
+    box-shadow: 0 12px 30px rgb(0 0 0 / .12); display: grid; gap: 14px; box-sizing: border-box;
+  }
+  .brand { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .lcd {
+    background: var(--lcd); color: var(--lcd-ink); border-radius: 10px; padding: 12px 14px;
+    font-family: var(--font-lcd); text-align: right; box-shadow: inset 0 2px 6px rgb(0 0 0 / .15);
+    min-width: 0;
+  }
+  .expr { font-size: 14px; min-height: 1.3em; opacity: .7; overflow-wrap: anywhere; }
+  .main { font-size: 40px; font-weight: 500; line-height: 1.15; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .main.small { font-size: 26px; }
+  .history { display: flex; gap: 6px; overflow-x: auto; min-height: 28px; scrollbar-width: none; }
+  .history:empty::before { content: "계산 기록이 여기에 쌓여요"; font-size: 12px; color: var(--muted); align-self: center; }
+  .history button {
+    flex: none; font: 12px var(--font-lcd); color: var(--key-ink); background: transparent;
+    border: 1px solid var(--edge); border-radius: 999px; padding: 4px 10px; cursor: pointer;
+  }
+  .keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .keys button {
+    font: 600 20px var(--font-ui); color: var(--key-ink); background: var(--key);
+    border: 1px solid var(--edge); border-radius: 12px; height: 58px; cursor: pointer;
+    box-shadow: 0 2px 0 var(--edge); transition: transform .05s, box-shadow .05s;
+  }
+  .keys button:active, .keys button.press { transform: translateY(2px); box-shadow: 0 0 0 var(--edge); }
+  .keys button:focus-visible, .history button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .keys .fn { background: var(--key-fn); font-size: 17px; }
+  .keys .op { color: var(--accent); font-size: 24px; }
+  .keys .op.active { background: var(--accent); color: var(--accent-ink); }
+  .keys .eq { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .keys .zero { grid-column: span 2; }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .keys button { transition: none; } }
+</style>
+
+<main class="calc">
+  <div class="brand"><span>Desk Calc</span><span>12자리 정밀도</span></div>
+  <div class="lcd" aria-live="polite">
+    <div class="expr" id="expr"></div>
+    <div class="main" id="main">0</div>
+  </div>
+  <div class="history" id="history" aria-label="계산 기록"></div>
+  <div class="keys" id="keys">
+    <button class="fn" id="k-clear" data-k="clear">AC</button>
+    <button class="fn" id="k-back" data-k="back" aria-label="지우기">⌫</button>
+    <button class="fn" id="k-pct" data-k="%">%</button>
+    <button class="op" id="k-div" data-k="÷">÷</button>
+    <button id="k7" data-k="7">7</button><button id="k8" data-k="8">8</button><button id="k9" data-k="9">9</button>
+    <button class="op" id="k-mul" data-k="×">×</button>
+    <button id="k4" data-k="4">4</button><button id="k5" data-k="5">5</button><button id="k6" data-k="6">6</button>
+    <button class="op" id="k-sub" data-k="−">−</button>
+    <button id="k1" data-k="1">1</button><button id="k2" data-k="2">2</button><button id="k3" data-k="3">3</button>
+    <button class="op" id="k-add" data-k="+">+</button>
+    <button class="fn" id="k-neg" data-k="neg" aria-label="부호 바꾸기">±</button>
+    <button id="k0" data-k="0">0</button>
+    <button id="k-dot" data-k=".">.</button>
+    <button class="eq" id="k-eq" data-k="=">=</button>
+  </div>
+  <p class="hint">키보드로도 입력할 수 있어요 · Enter = 계산 · Esc = 초기화</p>
+</main>
+
+<script>
+  const exprEl = document.getElementById('expr');
+  const mainEl = document.getElementById('main');
+  const histEl = document.getElementById('history');
+  const clearBtn = document.getElementById('k-clear');
+
+  let tokens = [];      // [number, op, number, op, ...]
+  let cur = '0';        // number being typed, or null right after an operator
+  let done = false;     // just pressed "="
+  let error = false;
+
+  const fmt = n => {
+    if (!isFinite(n)) return '오류';
+    const r = parseFloat(n.toPrecision(12));
+    return Math.abs(r) >= 1e15 || (r !== 0 && Math.abs(r) < 1e-9) ? r.toExponential(6) : String(r);
+  };
+  const pretty = s => {
+    if (s === null || /e/.test(s)) return s;
+    const [i, d] = s.split('.');
+    const neg = i.startsWith('-');
+    const body = (neg ? i.slice(1) : i).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '-' : '') + body + (d !== undefined ? '.' + d : '');
+  };
+
+  function evaluate(list) {
+    // × and ÷ first, then + and −
+    const stack = [list[0]];
+    for (let i = 1; i < list.length; i += 2) {
+      const op = list[i], n = list[i + 1];
+      if (op === '×') stack.push(stack.pop() * n);
+      else if (op === '÷') { if (n === 0) throw new Error('div0'); stack.push(stack.pop() / n); }
+      else stack.push(op, n);
+    }
+    let r = stack[0];
+    for (let i = 1; i < stack.length; i += 2) r = stack[i] === '+' ? r + stack[i + 1] : r - stack[i + 1];
+    return r;
+  }
+
+  function reset() { tokens = []; cur = '0'; done = false; error = false; }
+
+  function press(k) {
+    if (error && k !== 'clear') reset();
+    if (/^\d$/.test(k)) {
+      if (done) reset();
+      if (cur === null || cur === '0') cur = k;
+      else if (cur === '-0') cur = '-' + k;
+      else if (cur.replace(/[-.]/g, '').length < 15) cur += k;
+    } else if (k === '.') {
+      if (done) reset();
+      if (cur === null) cur = '0.';
+      else if (!cur.includes('.')) cur += '.';
+    } else if ('+−×÷'.includes(k)) {
+      if (done) { done = false; tokens = []; }
+      if (cur === null && tokens.length) tokens[tokens.length - 1] = k;
+      else { tokens.push(parseFloat(cur)); tokens.push(k); cur = null; }
+    } else if (k === '=') {
+      if (done) return;
+      const list = tokens.slice();
+      if (cur === null) list.pop(); else list.push(parseFloat(cur));
+      if (list.length < 3) return;
+      const text = list.map(t => typeof t === 'number' ? pretty(fmt(t)) : t).join(' ');
+      try {
+        const r = fmt(evaluate(list));
+        exprEl.textContent = text + ' =';
+        tokens = []; cur = r; done = true;
+        addHistory(text, r);
+      } catch {
+        exprEl.textContent = text + ' =';
+        error = true; cur = '0';
+      }
+      return render();
+    } else if (k === 'clear') {
+      if (cur !== null && cur !== '0' && !done && !error) cur = '0';
+      else reset();
+    } else if (k === 'back') {
+      if (done) { exprEl.textContent = ''; done = false; }
+      else if (cur !== null) cur = cur.length > 1 && cur !== '-0' ? cur.slice(0, -1).replace(/^-$/, '0') : '0';
+    } else if (k === 'neg') {
+      if (cur === null) cur = '-0';
+      else cur = cur.startsWith('-') ? cur.slice(1) : '-' + cur;
+      done = false;
+    } else if (k === '%') {
+      if (cur !== null) { cur = fmt(parseFloat(cur) / 100); done = false; }
+    }
+    if (!done) exprEl.textContent = tokens.map(t => typeof t === 'number' ? pretty(fmt(t)) : t).join(' ');
+    render();
+  }
+
+  function render() {
+    let shown = error ? '0으로 나눌 수 없어요'
+      : pretty(cur !== null ? cur : fmt(tokens[tokens.length - 2]));
+    mainEl.textContent = shown;
+    mainEl.classList.toggle('small', shown.length > 12);
+    const lastOp = cur === null ? tokens[tokens.length - 1] : null;
+    document.querySelectorAll('.keys .op').forEach(b => b.classList.toggle('active', b.dataset.k === lastOp));
+    clearBtn.textContent = cur !== null && cur !== '0' && !done && !error ? 'C' : 'AC';
+  }
+
+  function addHistory(text, result) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = `${text} = ${pretty(result)}`;
+    b.title = '결과 다시 쓰기';
+    b.addEventListener('click', () => { reset(); cur = result; exprEl.textContent = ''; render(); });
+    histEl.prepend(b);
+    while (histEl.children.length > 8) histEl.lastChild.remove();
+  }
+
+  document.getElementById('keys').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b) press(b.dataset.k);
+  });
+
+  const keyMap = { '/': '÷', '*': '×', '-': '−', '+': '+', 'Enter': '=', '=': '=',
+    'Escape': 'clear', 'Backspace': 'back', '%': '%', '.': '.', ',': '.' };
+  document.addEventListener('keydown', e => {
+    const k = /^\d$/.test(e.key) ? e.key : keyMap[e.key];
+    if (!k) return;
+    e.preventDefault();
+    press(k);
+    const btn = document.querySelector(`.keys button[data-k="${CSS.escape(k)}"]`);
+    if (btn) { btn.classList.add('press'); setTimeout(() => btn.classList.remove('press'), 90); }
+  });
+
+  render();
+</script>
